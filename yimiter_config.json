@@ -1,0 +1,12 @@
+{
+  "user_whitelist": [],
+  "threshold": 85,
+  "limit_mode": "percent",
+  "limit_gb": 8.0,
+  "auto_sleep": false,
+  "auto_start": false,
+  "refresh_sec": 2,
+  "max_rows": 20,
+  "sleep_above_mb": 50,
+  "start_minimized": false
+}
