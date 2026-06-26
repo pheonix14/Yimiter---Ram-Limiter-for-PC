@@ -133,7 +133,7 @@ class SettingsPanel:
         self._section(sf, "Automation")
 
         self.auto_sleep_var = tk.BooleanVar(value=self.cfg.auto_sleep)
-        self._checkbox(sf, "💤 Auto-sleep when above threshold", self.auto_sleep_var, C.SLEEP)
+        self._checkbox(sf, "🔴 Auto-kill inactive apps (>20m)", self.auto_sleep_var, C.RED)
 
         self.auto_start_var = tk.BooleanVar(value=is_startup_enabled())
         self._checkbox(sf, "🚀 Start with Windows", self.auto_start_var, C.CYAN)

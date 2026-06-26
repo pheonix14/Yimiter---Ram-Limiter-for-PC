@@ -83,7 +83,7 @@ class Config:
         self.refresh_sec = 2
         self.max_rows = 20
         self.sleep_above_mb = 150
-        self.activity_window_min = 10
+        self.activity_window_min = 20
         self.freeze_per_cycle = 1
         self.notifications = True
         self.start_minimized = False

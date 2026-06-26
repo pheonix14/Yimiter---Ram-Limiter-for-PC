@@ -92,7 +92,17 @@ class ProcessManager:
         return max(0.0, samples[-1][1] - samples[0][1])
 
     def _is_protected(self, pid, name):
-        return pid == self.own_pid or self.cfg.is_essential((name or "").lower())
+        if pid == self.own_pid or self.cfg.is_essential((name or "").lower()):
+            return True
+        try:
+            p = psutil.Process(pid)
+            exe = p.exe().lower()
+            # Protect Windows system apps and drivers
+            if "windows\\system32" in exe or "windows\\syswow64" in exe or "windows\\winsxs" in exe or "driverstore" in exe:
+                return True
+        except Exception:
+            pass
+        return False
 
     def _trim_working_set(self, pid):
         try:
@@ -201,31 +211,31 @@ class ProcessManager:
         procs.sort(key=lambda x: (x[3], -x[2]))
         return procs
 
-    def auto_sleep_low_activity(self):
-        slept = []
+    def auto_kill_low_activity(self):
+        killed = []
         limit = max(1, int(self.cfg.freeze_per_cycle))
         self.sample_activity()
 
-        for pid, name, rss, _cpu_delta in self._freeze_candidates()[:limit]:
-            ok, _ = self.sleep(pid, name)
-            if ok:
-                self._trim_working_set(pid)
-                slept.append((name, rss))
-        return slept
+        for pid, name, rss, cpu_delta in self._freeze_candidates()[:limit]:
+            if cpu_delta < 0.5: # 20 minutes of inactivity
+                ok, _ = self.kill(pid, name)
+                if ok:
+                    killed.append((name, rss))
+        return killed
 
     def auto_sleep_one(self):
-        slept = self.auto_sleep_low_activity()
-        if slept:
-            return slept[0]
+        killed = self.auto_kill_low_activity()
+        if killed:
+            return killed[0]
         return None, 0
 
-    def deep_sleep_hogs(self):
-        slept = 0
+    def deep_kill_hogs(self):
+        killed = 0
         for pid, name, _rss, _cpu_delta in self._freeze_candidates()[:8]:
-            ok, _ = self.sleep(pid, name)
+            ok, _ = self.kill(pid, name)
             if ok:
-                slept += 1
-        return slept
+                killed += 1
+        return killed
 
     def kill_notifications(self):
         count = 0

@@ -198,10 +198,12 @@ class YimiterApp:
         bf = tk.Frame(right, bg=C.BG)
         bf.pack(fill="x", pady=(8, 0))
         btns = [
-            ("💤 Deep Sleep Hogs", C.SLEEP, self._act_deep_sleep),
+            ("🔴 Deep Kill Hogs", C.RED, self._act_deep_kill),
             ("🔕 Kill Notifications", C.PINK, self._act_kill_notifs),
             ("🧹 Free Memory", C.PURPLE, self._act_flush),
             ("☀️ Wake All", C.GREEN, self._act_wake_all),
+            ("🟥 KILL YIMITER", C.RED, self._act_kill_yimiter),
+            ("🗑️ Uninstall", C.TEXT3, self._act_uninstall),
         ]
         for i, (text, color, cmd) in enumerate(btns):
             fg = "#0b0e14" if color in (C.GREEN, C.YELLOW) else "#ffffff"
@@ -303,12 +305,12 @@ class YimiterApp:
                 limit_desc = f"{self.cfg.threshold}%"
                 current_desc = f"{pct:.0f}%"
 
-            # Auto-sleep indicator
+            # Auto-kill indicator
             if self.cfg.auto_sleep:
-                self.auto_lbl.config(text=f"⚙️ Auto-Sleep ON (limit {limit_desc})",
-                                      fg=C.SLEEP)
+                self.auto_lbl.config(text=f"⚙️ Auto-Kill ON (limit {limit_desc})",
+                                      fg=C.RED)
             else:
-                self.auto_lbl.config(text="⚙️ Auto-Sleep OFF — enable in Settings",
+                self.auto_lbl.config(text="⚙️ Auto-Kill OFF — enable in Settings",
                                       fg=C.TEXT3)
 
             # Alert and Auto-Sleep
@@ -320,11 +322,11 @@ class YimiterApp:
                 if self.cfg.auto_sleep:
                     name, rss = self.pm.auto_sleep_one()
                     if name:
-                        self._status(f"⚙️ Auto-slept: {name} ({fmt(rss)})", C.SLEEP)
+                        self._status(f"⚙️ Auto-killed: {name} ({fmt(rss)})", C.RED)
                         if self.cfg.notifications:
                             notifier.send(
                                 "RAM Limit Exceeded",
-                                f"Auto-slept process '{name}' ({fmt(rss)}) to free RAM.",
+                                f"Auto-killed process '{name}' ({fmt(rss)}) due to 20m inactivity.",
                                 self.logo_ico if os.path.exists(self.logo_ico) else None
                             )
             else:
@@ -564,9 +566,9 @@ class YimiterApp:
 
     # ─── Bulk actions ────────────────────────────────────────────────────
 
-    def _act_deep_sleep(self):
-        n = self.pm.deep_sleep_hogs()
-        self._status(f"😴 Put {n} RAM hogs to deep sleep", C.SLEEP)
+    def _act_deep_kill(self):
+        n = self.pm.deep_kill_hogs()
+        self._status(f"🔴 Killed {n} RAM hogs", C.RED)
 
     def _act_kill_notifs(self):
         n = self.pm.kill_notifications()
@@ -579,6 +581,21 @@ class YimiterApp:
     def _act_wake_all(self):
         n = self.pm.wake_all()
         self._status(f"☀️ Woke up {n} processes", C.GREEN)
+
+    def _act_kill_yimiter(self):
+        if messagebox.askyesno("Kill Yimiter", "Disable startup and terminate Yimiter completely?", icon="warning"):
+            disable_startup()
+            self.cfg.auto_start = False
+            self.cfg.save()
+            self._on_close_full()
+
+    def _act_uninstall(self):
+        if messagebox.askyesno("Uninstall", "This will remove Yimiter from Windows Startup.\nYou can then safely delete its folder.\n\nProceed?", icon="warning"):
+            disable_startup()
+            self.cfg.auto_start = False
+            self.cfg.save()
+            messagebox.showinfo("Uninstall", "Yimiter has been uninstalled from startup.\nIt will now close. You can delete the Yimiter folder.")
+            self._on_close_full()
 
     # ─── Desktop Widget Toggle ───────────────────────────────────────────
 
