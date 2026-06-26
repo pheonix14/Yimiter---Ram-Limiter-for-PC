@@ -1,12 +1,20 @@
 {
   "user_whitelist": [],
+  "reserved_apps": {},
   "threshold": 85,
+  "safe_resume_threshold": 72,
   "limit_mode": "percent",
   "limit_gb": 8.0,
+  "crash_prevention": true,
+  "proc_limit_gb": 4.0,
+  "proc_limit_action": "sleep",
   "auto_sleep": false,
   "auto_start": false,
   "refresh_sec": 2,
   "max_rows": 20,
   "sleep_above_mb": 50,
+  "activity_window_min": 10,
+  "freeze_per_cycle": 1,
+  "notifications": true,
   "start_minimized": false
 }

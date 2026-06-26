@@ -141,6 +141,9 @@ class SettingsPanel:
         self.minimized_var = tk.BooleanVar(value=self.cfg.start_minimized)
         self._checkbox(sf, "🔽 Start minimized to tray", self.minimized_var, C.TEXT2)
 
+        self.notifications_var = tk.BooleanVar(value=self.cfg.notifications)
+        self._checkbox(sf, "🔔 Enable desktop notifications", self.notifications_var, C.YELLOW)
+
         tk.Frame(sf, bg=C.BORDER, height=1).pack(fill="x", pady=8)
 
         # ── Section: Crash Prevention ──
@@ -185,6 +188,47 @@ class SettingsPanel:
         rb_flush.pack(side="left", padx=8)
 
         self._update_crash_prev_states()
+
+        # System-Wide Crash Guard
+        tk.Frame(sf, bg=C.BORDER, height=1).pack(fill="x", pady=8)
+        self.sys_crash_guard_var = tk.BooleanVar(value=self.cfg.system_crash_guard)
+        self._checkbox(sf, "Enable System-Wide RAM Guard", self.sys_crash_guard_var, C.RED,
+                       command=self._update_sys_crash_states)
+
+        self.sys_crash_threshold_var = tk.IntVar(value=self.cfg.system_crash_threshold)
+        self._setting_row(sf, "   Trigger threshold (%)", "%")
+        self.spin_sys_pct = tk.Spinbox(sf, from_=50, to=99, textvariable=self.sys_crash_threshold_var, width=5,
+                                       bg=C.CARD, fg=C.RED, font=("Consolas", 11, "bold"),
+                                       buttonbackground=C.CARD, relief="flat",
+                                       highlightthickness=1, highlightbackground=C.BORDER,
+                                       insertbackground=C.TEXT)
+        self.spin_sys_pct.pack(anchor="w", padx=24, pady=(0, 6))
+
+        self.sys_crash_action_var = tk.StringVar(value=self.cfg.system_crash_action)
+        self._setting_row(sf, "   Action when triggered", "")
+        
+        self.sys_act_frame = tk.Frame(sf, bg=C.SETTINGS)
+        self.sys_act_frame.pack(anchor="w", padx=24, pady=(0, 6))
+
+        rb_sys_flush = tk.Radiobutton(self.sys_act_frame, text="Flush", variable=self.sys_crash_action_var,
+                                      value="flush", bg=C.SETTINGS, fg=C.TEXT, selectcolor=C.CARD,
+                                      activebackground=C.SETTINGS, activeforeground=C.TEXT,
+                                      font=("Segoe UI", 9))
+        rb_sys_flush.pack(side="left", padx=(0, 8))
+
+        rb_sys_sleep = tk.Radiobutton(self.sys_act_frame, text="Sleep Hog", variable=self.sys_crash_action_var,
+                                      value="sleep", bg=C.SETTINGS, fg=C.TEXT, selectcolor=C.CARD,
+                                      activebackground=C.SETTINGS, activeforeground=C.TEXT,
+                                      font=("Segoe UI", 9))
+        rb_sys_sleep.pack(side="left", padx=8)
+
+        rb_sys_kill = tk.Radiobutton(self.sys_act_frame, text="Kill Hog", variable=self.sys_crash_action_var,
+                                     value="kill", bg=C.SETTINGS, fg=C.TEXT, selectcolor=C.CARD,
+                                     activebackground=C.SETTINGS, activeforeground=C.TEXT,
+                                     font=("Segoe UI", 9))
+        rb_sys_kill.pack(side="left", padx=8)
+
+        self._update_sys_crash_states()
 
         tk.Frame(sf, bg=C.BORDER, height=1).pack(fill="x", pady=8)
 
@@ -329,6 +373,14 @@ class SettingsPanel:
             if isinstance(child, tk.Radiobutton):
                 child.config(state=state)
 
+    def _update_sys_crash_states(self):
+        state = "normal" if self.sys_crash_guard_var.get() else "disabled"
+        fg_spin = C.RED if self.sys_crash_guard_var.get() else C.TEXT3
+        self.spin_sys_pct.config(state=state, fg=fg_spin)
+        for child in self.sys_act_frame.winfo_children():
+            if isinstance(child, tk.Radiobutton):
+                child.config(state=state)
+
     def _save(self):
         self.cfg.threshold = self.threshold_var.get()
         self.cfg.limit_mode = self.limit_mode_var.get()
@@ -342,11 +394,18 @@ class SettingsPanel:
         except ValueError:
             self.cfg.proc_limit_gb = 4.0
         self.cfg.proc_limit_action = self.proc_action_var.get()
+        self.cfg.system_crash_guard = self.sys_crash_guard_var.get()
+        try:
+            self.cfg.system_crash_threshold = int(self.sys_crash_threshold_var.get())
+        except ValueError:
+            self.cfg.system_crash_threshold = 95
+        self.cfg.system_crash_action = self.sys_crash_action_var.get()
         self.cfg.refresh_sec = self.refresh_var.get()
         self.cfg.max_rows = self.maxrows_var.get()
         self.cfg.sleep_above_mb = self.sleep_mb_var.get()
         self.cfg.auto_sleep = self.auto_sleep_var.get()
         self.cfg.start_minimized = self.minimized_var.get()
+        self.cfg.notifications = self.notifications_var.get()
 
         want_startup = self.auto_start_var.get()
         if want_startup and not is_startup_enabled():
@@ -372,8 +431,13 @@ class SettingsPanel:
         self.auto_sleep_var.set(False)
         self.auto_start_var.set(False)
         self.minimized_var.set(False)
+        self.notifications_var.set(True)
+        self.sys_crash_guard_var.set(True)
+        self.sys_crash_threshold_var.set(95)
+        self.sys_crash_action_var.set("flush")
         self._update_spin_states()
         self._update_crash_prev_states()
+        self._update_sys_crash_states()
 
     def close(self):
         self.backdrop.destroy()

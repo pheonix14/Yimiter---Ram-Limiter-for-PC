@@ -31,26 +31,59 @@ class ProcessManager:
             return 0.0
         return float(getattr(cpu_times, "user", 0.0) + getattr(cpu_times, "system", 0.0))
 
-    def sample_activity(self):
+    def sample_processes(self, total_mem):
         now = time.time()
+        # Cache processes for 1.0 second to avoid multiple expensive iterations in the same cycle
+        if hasattr(self, "_last_scan_time") and now - self._last_scan_time < 1.0:
+            return self._cached_procs
+
+        self._last_scan_time = now
         cutoff = now - max(1, int(self.cfg.activity_window_min)) * 60
         alive = set()
+        procs = []
 
-        for p in psutil.process_iter(["pid", "cpu_times"]):
+        for p in psutil.process_iter(["pid", "name", "memory_info", "cpu_times"]):
             try:
-                pid = p.info["pid"]
+                info = p.info
+                pid = info["pid"]
+                name = info["name"] or "Unknown"
                 alive.add(pid)
+
+                # CPU times & Activity
+                cpu_times = info.get("cpu_times")
                 samples = self.activity.setdefault(pid, [])
-                samples.append((now, self._cpu_seconds(p.info.get("cpu_times"))))
+                samples.append((now, self._cpu_seconds(cpu_times)))
                 self.activity[pid] = [s for s in samples if s[0] >= cutoff]
+
+                # Memory info
+                mi = info.get("memory_info")
+                if mi:
+                    rss = mi.rss
+                    pct = rss / total_mem * 100 if total_mem else 0
+                    procs.append((pid, name, rss, pct))
             except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                 continue
             except Exception as exc:
-                self._remember(f"Activity sample skipped: {exc}")
+                self._remember(f"Process sample skipped: {exc}")
 
+        # Cleanup dead processes from activity
         for pid in list(self.activity):
             if pid not in alive:
                 self.activity.pop(pid, None)
+
+        procs.sort(key=lambda x: x[2], reverse=True)
+
+        # Cleanup dead sleeping processes
+        for pid in [p for p in self.sleeping if not psutil.pid_exists(p)]:
+            del self.sleeping[pid]
+
+        self._cached_procs = procs
+        return procs
+
+    def sample_activity(self):
+        # Fallback if called independently
+        mem_total = psutil.virtual_memory().total
+        self.sample_processes(mem_total)
 
     def recent_cpu_delta(self, pid):
         samples = self.activity.get(pid, [])
@@ -73,23 +106,7 @@ class ProcessManager:
         return False
 
     def get_sorted_processes(self, total_mem):
-        self.sample_activity()
-        procs = []
-        for p in psutil.process_iter(["pid", "name", "memory_info"]):
-            try:
-                info = p.info
-                mi = info["memory_info"]
-                if mi:
-                    rss = mi.rss
-                    pct = rss / total_mem * 100 if total_mem else 0
-                    procs.append((info["pid"], info["name"] or "Unknown", rss, pct))
-            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-                continue
-        procs.sort(key=lambda x: x[2], reverse=True)
-
-        for pid in [p for p in self.sleeping if not psutil.pid_exists(p)]:
-            del self.sleeping[pid]
-        return procs
+        return self.sample_processes(total_mem)
 
     def sleep(self, pid, name):
         if self._is_protected(pid, name):
@@ -140,10 +157,19 @@ class ProcessManager:
             return False, f"Protected: {name}"
         try:
             p = psutil.Process(pid)
+            if pid in self.sleeping:
+                try:
+                    p.resume()
+                except Exception:
+                    pass
             p.terminate()
             try:
                 p.wait(timeout=3)
             except psutil.TimeoutExpired:
+                try:
+                    p.resume()
+                except Exception:
+                    pass
                 p.kill()
             self.sleeping.pop(pid, None)
             msg = f"Killed: {name}"
@@ -262,3 +288,51 @@ class ProcessManager:
             except Exception as exc:
                 self._remember(f"Crash guard skipped a process: {exc}")
         return actions_taken
+
+    def system_crash_prevention(self, mem_pct, total_mem):
+        if not self.cfg.system_crash_guard:
+            return None
+
+        # Cooldown of 20 seconds to prevent rapid-fire triggers
+        now = time.time()
+        if not hasattr(self, "_last_sys_guard_time"):
+            self._last_sys_guard_time = 0.0
+        if now - self._last_sys_guard_time < 20.0:
+            return None
+
+        if mem_pct >= self.cfg.system_crash_threshold:
+            self._last_sys_guard_time = now
+            actions = []
+
+            # Step 1: Flush memory of non-essential processes
+            flushed = self.flush_memory()
+            if flushed > 0:
+                actions.append(f"System RAM reached {mem_pct:.1f}%! Flushed working sets of {flushed} processes.")
+
+            # Step 2: If system RAM is still above threshold, sleep/kill/flush the single largest non-essential process
+            # Refresh memory percent check
+            time.sleep(0.1) # brief pause to let memory settle
+            new_mem = psutil.virtual_memory()
+            if new_mem.percent >= self.cfg.system_crash_threshold:
+                # Get the processes sorted by memory usage
+                procs = self.get_sorted_processes(total_mem)
+                for pid, name, rss, pct in procs:
+                    if not self._is_protected(pid, name) and pid not in self.sleeping:
+                        from colors import fmt
+                        if self.cfg.system_crash_action == "sleep":
+                            ok, msg = self.sleep(pid, name)
+                            if ok:
+                                self._trim_working_set(pid)
+                                actions.append(f"System Crash Guard: Auto-slept memory hog '{name}' ({fmt(rss)}) to free RAM.")
+                                break
+                        elif self.cfg.system_crash_action == "kill":
+                            ok, msg = self.kill(pid, name)
+                            if ok:
+                                actions.append(f"System Crash Guard: Auto-killed memory hog '{name}' ({fmt(rss)}) to prevent system crash.")
+                                break
+                        elif self.cfg.system_crash_action == "flush":
+                            if self._trim_working_set(pid):
+                                actions.append(f"System Crash Guard: Trimmed working set of memory hog '{name}' ({fmt(rss)}).")
+                                break
+            return actions
+        return None

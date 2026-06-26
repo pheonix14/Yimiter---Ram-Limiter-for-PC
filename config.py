@@ -3,9 +3,14 @@ config.py — Handles configuration persistence, whitelisting, and defaults for 
 """
 
 import os
+import sys
 import json
 
-APP_DIR = os.path.dirname(os.path.abspath(__file__))
+frozen = getattr(sys, 'frozen', False)
+if frozen:
+    APP_DIR = os.path.dirname(sys.executable)
+else:
+    APP_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(APP_DIR, "yimiter_config.json")
 
 # ─── Essential / Bloat Whitelists ────────────────────────────────────────
@@ -70,6 +75,9 @@ class Config:
         self.crash_prevention = True
         self.proc_limit_gb = 4.0
         self.proc_limit_action = "sleep"
+        self.system_crash_guard = True
+        self.system_crash_threshold = 95
+        self.system_crash_action = "flush"
         self.auto_sleep = True
         self.auto_start = True
         self.refresh_sec = 2
@@ -98,6 +106,9 @@ class Config:
             self.crash_prevention = d.get("crash_prevention", self.crash_prevention)
             self.proc_limit_gb = d.get("proc_limit_gb", self.proc_limit_gb)
             self.proc_limit_action = d.get("proc_limit_action", self.proc_limit_action)
+            self.system_crash_guard = d.get("system_crash_guard", self.system_crash_guard)
+            self.system_crash_threshold = d.get("system_crash_threshold", self.system_crash_threshold)
+            self.system_crash_action = d.get("system_crash_action", self.system_crash_action)
             self.auto_sleep = d.get("auto_sleep", self.auto_sleep)
             self.auto_start = d.get("auto_start", self.auto_start)
             self.refresh_sec = d.get("refresh_sec", self.refresh_sec)
@@ -123,6 +134,9 @@ class Config:
                     "crash_prevention": self.crash_prevention,
                     "proc_limit_gb": self.proc_limit_gb,
                     "proc_limit_action": self.proc_limit_action,
+                    "system_crash_guard": self.system_crash_guard,
+                    "system_crash_threshold": self.system_crash_threshold,
+                    "system_crash_action": self.system_crash_action,
                     "auto_sleep": self.auto_sleep,
                     "auto_start": self.auto_start,
                     "refresh_sec": self.refresh_sec,
